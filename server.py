@@ -47,7 +47,7 @@ class MessengerHandler(BaseHTTPRequestHandler):
             return
 
         # -------- LOG incoming application frame --------
-        print("[IN ]", frame)
+        print("[IN ]", frame, flush=True)
 
         try:
             msg_type = frame["type"]
@@ -188,7 +188,7 @@ class MessengerHandler(BaseHTTPRequestHandler):
     # ---------- Helper ----------
     def _send_and_log(self, response):
         # -------- LOG outgoing application frame --------
-        print("[OUT]", response)
+        print("[OUT]", response, flush=True)
 
         data = json.dumps(response).encode()
         self.send_response(200)
