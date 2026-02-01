@@ -14,14 +14,18 @@ MSG_GET = 0
 MSG_PUSH = 1
 MSG_GETRESPONSE = 0
 
-ASSOC_TIMEOUT = 60
+ASSOC_TIMEOUT = 300          # 5 minutes
 MAX_PAYLOAD_LEN = 254
 MAX_BUFFER_SIZE = 5
 
 # ---------- Server state ----------
 
-associations = {}      # client_id -> last_activity_time
-buffers = {}           # receiver_id -> list of messages
+# client_id -> last_activity_time
+associations = {}
+
+# receiver_id -> list of messages
+# each message: { "from": sender_id, "payload": payload }
+buffers = {}
 
 
 class MessengerHandler(BaseHTTPRequestHandler):
@@ -33,14 +37,22 @@ class MessengerHandler(BaseHTTPRequestHandler):
 
         try:
             frame = json.loads(body.decode())
+        except Exception:
+            return
+
+        # -------- LOG incoming application frame --------
+        print("[IN ]", frame)
+
+        try:
             msg_type = frame["type"]
             msg_code = frame["message"]
             client_id = frame["id"]
         except Exception:
-            self._send_json({
+            response = {
                 "type": TYPE_MANAGEMENT,
                 "message": "MALFORMED_FRAME"
-            })
+            }
+            self._send_and_log(response)
             return
 
         now = time.time()
@@ -48,11 +60,13 @@ class MessengerHandler(BaseHTTPRequestHandler):
         # ---------- MANAGEMENT / ASSOCIATE ----------
         if msg_type == TYPE_MANAGEMENT and msg_code == MSG_ASSOCIATE:
             associations[client_id] = now
-            self._send_json({
+
+            response = {
                 "type": TYPE_MANAGEMENT,
                 "message": "ASSOCIATION_SUCCESS",
                 "id": client_id
-            })
+            }
+            self._send_and_log(response)
             return
 
         # ---------- DATA / PUSH ----------
@@ -60,11 +74,12 @@ class MessengerHandler(BaseHTTPRequestHandler):
 
             last = associations.get(client_id)
             if last is None or (now - last) > ASSOC_TIMEOUT:
-                self._send_json({
+                response = {
                     "type": TYPE_DATA,
                     "message": "NOT_ASSOCIATED",
                     "id": client_id
-                })
+                }
+                self._send_and_log(response)
                 return
 
             try:
@@ -72,30 +87,33 @@ class MessengerHandler(BaseHTTPRequestHandler):
                 payload = frame["payload"]
                 length = frame["length"]
             except Exception:
-                self._send_json({
+                response = {
                     "type": TYPE_DATA,
                     "message": "MALFORMED_FRAME",
                     "id": client_id
-                })
+                }
+                self._send_and_log(response)
                 return
 
             if length > MAX_PAYLOAD_LEN or len(payload) != length:
-                self._send_json({
+                response = {
                     "type": TYPE_DATA,
                     "message": "INVALID_LENGTH",
                     "id": client_id
-                })
+                }
+                self._send_and_log(response)
                 return
 
             if receiver_id not in buffers:
                 buffers[receiver_id] = []
 
             if len(buffers[receiver_id]) >= MAX_BUFFER_SIZE:
-                self._send_json({
+                response = {
                     "type": TYPE_DATA,
                     "message": "BUFFER_FULL",
                     "id": client_id
-                })
+                }
+                self._send_and_log(response)
                 return
 
             buffers[receiver_id].append({
@@ -103,11 +121,12 @@ class MessengerHandler(BaseHTTPRequestHandler):
                 "payload": payload
             })
 
-            self._send_json({
+            response = {
                 "type": TYPE_DATA,
                 "message": "PUSH_SUCCESS",
                 "id": client_id
-            })
+            }
+            self._send_and_log(response)
             return
 
         # ---------- CONTROL / GET ----------
@@ -115,42 +134,45 @@ class MessengerHandler(BaseHTTPRequestHandler):
 
             last = associations.get(client_id)
             if last is None or (now - last) > ASSOC_TIMEOUT:
-                self._send_json({
+                response = {
                     "type": TYPE_CONTROL,
                     "message": "NOT_ASSOCIATED",
                     "id": client_id
-                })
+                }
+                self._send_and_log(response)
                 return
 
             if client_id not in buffers or len(buffers[client_id]) == 0:
-                self._send_json({
+                response = {
                     "type": TYPE_CONTROL,
                     "message": "BUFFER_EMPTY",
                     "id": client_id
-                })
+                }
+                self._send_and_log(response)
                 return
 
             msg = buffers[client_id].pop(0)
-
             payload = msg["payload"]
             sender_id = msg["from"]
 
-            self._send_json({
+            response = {
                 "type": TYPE_DATA,
                 "message": MSG_GETRESPONSE,
                 "id": client_id,
                 "id2": sender_id,
                 "length": len(payload),
                 "payload": payload
-            })
+            }
+            self._send_and_log(response)
             return
 
         # ---------- UNKNOWN ----------
-        self._send_json({
+        response = {
             "type": msg_type,
             "message": "UNKNOWN_MESSAGE",
             "id": client_id
-        })
+        }
+        self._send_and_log(response)
 
     def do_GET(self):
         self.send_response(200)
@@ -158,8 +180,11 @@ class MessengerHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"Messenger server running")
 
     # ---------- Helper ----------
-    def _send_json(self, payload):
-        data = json.dumps(payload).encode()
+    def _send_and_log(self, response):
+        # -------- LOG outgoing application frame --------
+        print("[OUT]", response)
+
+        data = json.dumps(response).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
