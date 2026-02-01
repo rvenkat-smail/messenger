@@ -27,6 +27,7 @@ associations = {}
 # each message: { "from": sender_id, "payload": payload }
 buffers = {}
 
+print("=== MESSENGER SERVER STARTED ===", flush=True)
 
 class MessengerHandler(BaseHTTPRequestHandler):
 
