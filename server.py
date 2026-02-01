@@ -6,23 +6,22 @@ import time
 # ---------- Protocol constants ----------
 
 TYPE_MANAGEMENT = 0
+TYPE_CONTROL = 1
 TYPE_DATA = 2
 
 MSG_ASSOCIATE = 0
+MSG_GET = 0
 MSG_PUSH = 1
+MSG_GETRESPONSE = 0
 
-ASSOC_TIMEOUT = 60          # seconds
+ASSOC_TIMEOUT = 60
 MAX_PAYLOAD_LEN = 254
 MAX_BUFFER_SIZE = 5
 
 # ---------- Server state ----------
 
-# client_id -> last_activity_time
-associations = {}
-
-# receiver_id -> list of messages
-# each message: { "from": sender_id, "payload": payload }
-buffers = {}
+associations = {}      # client_id -> last_activity_time
+buffers = {}           # receiver_id -> list of messages
 
 
 class MessengerHandler(BaseHTTPRequestHandler):
@@ -44,10 +43,11 @@ class MessengerHandler(BaseHTTPRequestHandler):
             })
             return
 
+        now = time.time()
+
         # ---------- MANAGEMENT / ASSOCIATE ----------
         if msg_type == TYPE_MANAGEMENT and msg_code == MSG_ASSOCIATE:
-            associations[client_id] = time.time()
-
+            associations[client_id] = now
             self._send_json({
                 "type": TYPE_MANAGEMENT,
                 "message": "ASSOCIATION_SUCCESS",
@@ -58,9 +58,7 @@ class MessengerHandler(BaseHTTPRequestHandler):
         # ---------- DATA / PUSH ----------
         if msg_type == TYPE_DATA and msg_code == MSG_PUSH:
 
-            now = time.time()
             last = associations.get(client_id)
-
             if last is None or (now - last) > ASSOC_TIMEOUT:
                 self._send_json({
                     "type": TYPE_DATA,
@@ -81,7 +79,6 @@ class MessengerHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            # Enforce payload length
             if length > MAX_PAYLOAD_LEN or len(payload) != length:
                 self._send_json({
                     "type": TYPE_DATA,
@@ -90,11 +87,9 @@ class MessengerHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            # Initialize buffer if needed
             if receiver_id not in buffers:
                 buffers[receiver_id] = []
 
-            # Check buffer capacity
             if len(buffers[receiver_id]) >= MAX_BUFFER_SIZE:
                 self._send_json({
                     "type": TYPE_DATA,
@@ -103,7 +98,6 @@ class MessengerHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            # Store message
             buffers[receiver_id].append({
                 "from": client_id,
                 "payload": payload
@@ -116,7 +110,42 @@ class MessengerHandler(BaseHTTPRequestHandler):
             })
             return
 
-        # ---------- Unknown ----------
+        # ---------- CONTROL / GET ----------
+        if msg_type == TYPE_CONTROL and msg_code == MSG_GET:
+
+            last = associations.get(client_id)
+            if last is None or (now - last) > ASSOC_TIMEOUT:
+                self._send_json({
+                    "type": TYPE_CONTROL,
+                    "message": "NOT_ASSOCIATED",
+                    "id": client_id
+                })
+                return
+
+            if client_id not in buffers or len(buffers[client_id]) == 0:
+                self._send_json({
+                    "type": TYPE_CONTROL,
+                    "message": "BUFFER_EMPTY",
+                    "id": client_id
+                })
+                return
+
+            msg = buffers[client_id].pop(0)
+
+            payload = msg["payload"]
+            sender_id = msg["from"]
+
+            self._send_json({
+                "type": TYPE_DATA,
+                "message": MSG_GETRESPONSE,
+                "id": client_id,
+                "id2": sender_id,
+                "length": len(payload),
+                "payload": payload
+            })
+            return
+
+        # ---------- UNKNOWN ----------
         self._send_json({
             "type": msg_type,
             "message": "UNKNOWN_MESSAGE",
