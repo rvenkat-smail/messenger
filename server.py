@@ -3,17 +3,26 @@ import os
 import json
 import time
 
-# Constants (assignment-style)
+# ---------- Protocol constants ----------
+
 TYPE_MANAGEMENT = 0
 TYPE_DATA = 2
 
 MSG_ASSOCIATE = 0
 MSG_PUSH = 1
 
-ASSOC_TIMEOUT = 60  # seconds
+ASSOC_TIMEOUT = 60          # seconds
+MAX_PAYLOAD_LEN = 254
+MAX_BUFFER_SIZE = 5
+
+# ---------- Server state ----------
 
 # client_id -> last_activity_time
 associations = {}
+
+# receiver_id -> list of messages
+# each message: { "from": sender_id, "payload": payload }
+buffers = {}
 
 
 class MessengerHandler(BaseHTTPRequestHandler):
@@ -35,7 +44,7 @@ class MessengerHandler(BaseHTTPRequestHandler):
             })
             return
 
-        # ---------------- MANAGEMENT / ASSOCIATE ----------------
+        # ---------- MANAGEMENT / ASSOCIATE ----------
         if msg_type == TYPE_MANAGEMENT and msg_code == MSG_ASSOCIATE:
             associations[client_id] = time.time()
 
@@ -46,8 +55,9 @@ class MessengerHandler(BaseHTTPRequestHandler):
             })
             return
 
-        # ---------------- DATA / PUSH ----------------
+        # ---------- DATA / PUSH ----------
         if msg_type == TYPE_DATA and msg_code == MSG_PUSH:
+
             now = time.time()
             last = associations.get(client_id)
 
@@ -59,15 +69,54 @@ class MessengerHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            # PUSH accepted (no buffering yet)
+            try:
+                receiver_id = frame["id2"]
+                payload = frame["payload"]
+                length = frame["length"]
+            except Exception:
+                self._send_json({
+                    "type": TYPE_DATA,
+                    "message": "MALFORMED_FRAME",
+                    "id": client_id
+                })
+                return
+
+            # Enforce payload length
+            if length > MAX_PAYLOAD_LEN or len(payload) != length:
+                self._send_json({
+                    "type": TYPE_DATA,
+                    "message": "INVALID_LENGTH",
+                    "id": client_id
+                })
+                return
+
+            # Initialize buffer if needed
+            if receiver_id not in buffers:
+                buffers[receiver_id] = []
+
+            # Check buffer capacity
+            if len(buffers[receiver_id]) >= MAX_BUFFER_SIZE:
+                self._send_json({
+                    "type": TYPE_DATA,
+                    "message": "BUFFER_FULL",
+                    "id": client_id
+                })
+                return
+
+            # Store message
+            buffers[receiver_id].append({
+                "from": client_id,
+                "payload": payload
+            })
+
             self._send_json({
                 "type": TYPE_DATA,
-                "message": "PUSH_ACCEPTED",
+                "message": "PUSH_SUCCESS",
                 "id": client_id
             })
             return
 
-        # ---------------- UNKNOWN MESSAGE ----------------
+        # ---------- Unknown ----------
         self._send_json({
             "type": msg_type,
             "message": "UNKNOWN_MESSAGE",
