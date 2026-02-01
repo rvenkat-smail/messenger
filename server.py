@@ -30,6 +30,11 @@ buffers = {}
 
 class MessengerHandler(BaseHTTPRequestHandler):
 
+    # --- ADD THIS HERE ---
+    def log_message(self, format, *args):
+        return
+    # --------------------
+
     def do_POST(self):
 
         content_length = int(self.headers.get("Content-Length", 0))
