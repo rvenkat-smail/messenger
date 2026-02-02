@@ -55,7 +55,7 @@ class MessengerHandler(BaseHTTPRequestHandler):
             client_id = frame["id"]
         except Exception:
             response = {
-                "type": TYPE_MANAGEMENT,
+                "type": TYPE_DATA,
                 "message": "MALFORMED_FRAME"
             }
             self._send_and_log(response)
@@ -81,7 +81,7 @@ class MessengerHandler(BaseHTTPRequestHandler):
             last = associations.get(client_id)
             if last is None or (now - last) > ASSOC_TIMEOUT:
                 response = {
-                    "type": TYPE_DATA,
+                    "type": TYPE_MANAGEMENT,
                     "message": "ASSOCIATE_FAILED",
                     "id": client_id
                 }
@@ -141,7 +141,7 @@ class MessengerHandler(BaseHTTPRequestHandler):
             last = associations.get(client_id)
             if last is None or (now - last) > ASSOC_TIMEOUT:
                 response = {
-                    "type": TYPE_CONTROL,
+                    "type": TYPE_MANAGEMENT,
                     "message": "ASSOCIATE_FAILED",
                     "id": client_id
                 }
