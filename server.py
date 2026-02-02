@@ -69,7 +69,7 @@ class MessengerHandler(BaseHTTPRequestHandler):
 
             response = {
                 "type": TYPE_MANAGEMENT,
-                "message": "ASSOCIATION_SUCCESS",
+                "message": "ASSOCIATE_SUCCESS",
                 "id": client_id
             }
             self._send_and_log(response)
@@ -82,7 +82,7 @@ class MessengerHandler(BaseHTTPRequestHandler):
             if last is None or (now - last) > ASSOC_TIMEOUT:
                 response = {
                     "type": TYPE_DATA,
-                    "message": "NOT_ASSOCIATED",
+                    "message": "ASSOCIATE_FAILED",
                     "id": client_id
                 }
                 self._send_and_log(response)
@@ -142,7 +142,7 @@ class MessengerHandler(BaseHTTPRequestHandler):
             if last is None or (now - last) > ASSOC_TIMEOUT:
                 response = {
                     "type": TYPE_CONTROL,
-                    "message": "NOT_ASSOCIATED",
+                    "message": "ASSOCIATE_FAILED",
                     "id": client_id
                 }
                 self._send_and_log(response)
