@@ -55,7 +55,7 @@ class MessengerHandler(BaseHTTPRequestHandler):
             client_id = frame["id"]
         except Exception:
             response = {
-                "type": TYPE_DATA,
+                "type": TYPE_MANAGEMENT,
                 "message": "MALFORMED_FRAME"
             }
             self._send_and_log(response)
@@ -94,7 +94,7 @@ class MessengerHandler(BaseHTTPRequestHandler):
                 length = frame["length"]
             except Exception:
                 response = {
-                    "type": TYPE_DATA,
+                    "type": TYPE_MANAGEMENT,
                     "message": "MALFORMED_FRAME",
                     "id": client_id
                 }
